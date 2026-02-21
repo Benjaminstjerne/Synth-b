@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Luminous Gong Garden</title>
+
+<style>
+html,body{
+margin:0;
+overflow:hidden;
+background:#f8fbff;
+touch-action:none;
+}
+</style>
+</head>
+
+<body>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160/build/three.min.js"></script>
+
+<script>
+
+//////////////// AUDIO //////////////////
+
+const ctx=new (window.AudioContext||webkitAudioContext)();
+
+const master=ctx.createGain();
+master.gain.value=.5;
+master.connect(ctx.destination);
+
+// Glockenspiel FM
+
+const carrier=ctx.createOscillator();
+const mod=ctx.createOscillator();
+const modGain=ctx.createGain();
+
+carrier.type="sine";
+mod.type="sine";
+mod.frequency.value=220;
+modGain.gain.value=120;
+
+mod.connect(modGain);
+modGain.connect(carrier.frequency);
+
+// Gong layer
+
+const gong=ctx.createOscillator();
+gong.type="triangle";
+gong.frequency.value=90;
+
+const gongFilter=ctx.createBiquadFilter();
+gongFilter.type="bandpass";
+gongFilter.frequency.value=300;
+
+// Envelopes
+
+const env=ctx.createGain();
+env.gain.value=0;
+
+const gongEnv=ctx.createGain();
+gongEnv.gain.value=0;
+
+// Reverb
+
+const convolver=ctx.createConvolver();
+
+function impulse(){
+let rate=ctx.sampleRate;
+let len=rate*3;
+let buf=ctx.createBuffer(2,len,rate);
+for(let c=0;c<2;c++){
+let d=buf.getChannelData(c);
+for(let i=0;i<len;i++){
+d[i]=(Math.random()*2-1)*Math.pow(1-i/len,3);
+}}
+return buf;
+}
+
+convolver.buffer=impulse();
+
+// routing
+
+carrier.connect(env);
+gong.connect(gongFilter);
+gongFilter.connect(gongEnv);
+
+env.connect(convolver);
+gongEnv.connect(convolver);
+convolver.connect(master);
+
+carrier.start();
+mod.start();
+gong.start();
+
+//////////////// THREE //////////////////
+
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0xf8fbff);
+
+const camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,.1,100);
+camera.position.z=4;
+
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const geo=new THREE.SphereGeometry(1,64,64);
+const base=geo.attributes.position.array.slice();
+
+const mat=new THREE.MeshPhysicalMaterial({
+color:0xfff2cc,
+roughness:.15,
+transmission:.6,
+thickness:.6,
+clearcoat:1
+});
+
+const mesh=new THREE.Mesh(geo,mat);
+scene.add(mesh);
+
+const sun=new THREE.DirectionalLight(0xffffff,2);
+sun.position.set(3,4,5);
+scene.add(sun);
+
+scene.add(new THREE.AmbientLight(0xffffff,.8));
+
+//////////////// INTERACTION //////////////////
+
+let target={x:.5,y:.5,z:0};
+let smooth={x:.5,y:.5,z:0};
+
+function lerp(a,b,t){return a+(b-a)*t;}
+
+addEventListener("pointermove",e=>{
+target.x=e.clientX/innerWidth;
+target.y=1-e.clientY/innerHeight;
+});
+
+addEventListener("pointerdown",()=>ctx.resume());
+
+if(DeviceMotionEvent){
+addEventListener("devicemotion",e=>{
+if(e.rotationRate){
+target.x+=e.rotationRate.gamma*.0004;
+target.y+=e.rotationRate.beta*.0004;
+target.z=e.accelerationIncludingGravity.z*.001;
+}
+});
+}
+
+//////////////// SOUND BLOOMS //////////////////
+
+let last=0;
+
+function bloom(freq){
+
+carrier.frequency.setTargetAtTime(freq,ctx.currentTime,.05);
+mod.frequency.value=freq*2;
+
+env.gain.cancelScheduledValues(ctx.currentTime);
+env.gain.setValueAtTime(0,ctx.currentTime);
+env.gain.linearRampToValueAtTime(.8,ctx.currentTime+.01);
+env.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+2);
+
+gong.frequency.setTargetAtTime(freq*.5,ctx.currentTime,.1);
+
+gongEnv.gain.cancelScheduledValues(ctx.currentTime);
+gongEnv.gain.setValueAtTime(0,ctx.currentTime);
+gongEnv.gain.linearRampToValueAtTime(.6,ctx.currentTime+.05);
+gongEnv.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+4);
+}
+
+//////////////// LOOP //////////////////
+
+function animate(t){
+
+requestAnimationFrame(animate);
+
+smooth.x=lerp(smooth.x,target.x,.04);
+smooth.y=lerp(smooth.y,target.y,.04);
+smooth.z=lerp(smooth.z,target.z,.04);
+
+let scale=1+.2*smooth.y;
+mesh.scale.setScalar(scale);
+
+let pos=geo.attributes.position.array;
+for(let i=0;i<pos.length;i++){
+pos[i]=base[i]*(1+Math.sin(t*.001+i)*.01);
+}
+geo.attributes.position.needsUpdate=true;
+
+mesh.rotation.y+=.001+smooth.x*.01;
+mesh.rotation.x+=.0005;
+
+let now=performance.now();
+if(now-last>1200){
+last=now;
+let freq=220+smooth.x*440+smooth.y*220;
+bloom(freq);
+}
+
+renderer.render(scene,camera);
+}
+
+animate();
+
+</script>
+</body>
+</html>
