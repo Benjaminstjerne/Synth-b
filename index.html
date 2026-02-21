@@ -2,13 +2,13 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Crystal Glock Garden</title>
+<title>Living Crystal Orb</title>
 
 <style>
 html,body{
 margin:0;
 overflow:hidden;
-background:#ffffff;
+background:white;
 touch-action:none;
 }
 </style>
@@ -27,69 +27,56 @@ const master=ctx.createGain();
 master.gain.value=.5;
 master.connect(ctx.destination);
 
-// pentatonic scale
 const scale=[1,9/8,5/4,3/2,5/3,2];
-
-// ---------- GLOCK ----------
 
 function glock(freq){
 
-const car=ctx.createOscillator();
-const mod=ctx.createOscillator();
-const mg=ctx.createGain();
-const amp=ctx.createGain();
+const o1=ctx.createOscillator();
+const o2=ctx.createOscillator();
+const g=ctx.createGain();
 
-car.type="sine";
-mod.type="sine";
+o1.type="sine";
+o2.type="sine";
 
-mod.frequency.value=freq*2.7;
-mg.gain.value=freq*1.5;
+o2.frequency.value=freq*2.41;
 
-mod.connect(mg);
-mg.connect(car.frequency);
+o1.frequency.value=freq;
 
-car.frequency.value=freq;
+o2.connect(o1.frequency);
 
-const hp=ctx.createBiquadFilter();
-hp.type="highpass";
-hp.frequency.value=800;
+o1.connect(g);
+g.connect(master);
 
-car.connect(hp);
-hp.connect(amp);
-amp.connect(master);
+g.gain.setValueAtTime(0,ctx.currentTime);
+g.gain.linearRampToValueAtTime(.7,ctx.currentTime+.002);
+g.gain.exponentialRampToValueAtTime(.0001,ctx.currentTime+.7);
 
-amp.gain.setValueAtTime(0,ctx.currentTime);
-amp.gain.linearRampToValueAtTime(.8,ctx.currentTime+.002);
-amp.gain.exponentialRampToValueAtTime(.0001,ctx.currentTime+.8);
+o1.start();
+o2.start();
 
-car.start();
-mod.start();
-
-car.stop(ctx.currentTime+1);
-mod.stop(ctx.currentTime+1);
+o1.stop(ctx.currentTime+1);
+o2.stop(ctx.currentTime+1);
 }
-
-// ---------- GONG ----------
 
 function gong(freq){
 
 const o=ctx.createOscillator();
-o.type="triangle";
-o.frequency.value=freq*.5;
-
 const bp=ctx.createBiquadFilter();
-bp.type="bandpass";
-bp.frequency.value=200;
+const g=ctx.createGain();
 
-const amp=ctx.createGain();
+o.type="triangle";
+o.frequency.value=freq*.4;
+
+bp.type="bandpass";
+bp.frequency.value=180;
 
 o.connect(bp);
-bp.connect(amp);
-amp.connect(master);
+bp.connect(g);
+g.connect(master);
 
-amp.gain.setValueAtTime(0,ctx.currentTime);
-amp.gain.linearRampToValueAtTime(.6,ctx.currentTime+.05);
-amp.gain.exponentialRampToValueAtTime(.0001,ctx.currentTime+5);
+g.gain.setValueAtTime(0,ctx.currentTime);
+g.gain.linearRampToValueAtTime(.6,ctx.currentTime+.05);
+g.gain.exponentialRampToValueAtTime(.0001,ctx.currentTime+5);
 
 o.start();
 o.stop(ctx.currentTime+6);
@@ -98,7 +85,7 @@ o.stop(ctx.currentTime+6);
 //////////////// THREE //////////////////
 
 const scene=new THREE.Scene();
-scene.background=new THREE.Color(0xfdfefe);
+scene.background=new THREE.Color(0xffffff);
 
 const camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,.1,100);
 camera.position.z=4;
@@ -107,14 +94,14 @@ const renderer=new THREE.WebGLRenderer({antialias:true});
 renderer.setSize(innerWidth,innerHeight);
 document.body.appendChild(renderer.domElement);
 
-const geo=new THREE.SphereGeometry(1,48,48);
+const geo=new THREE.SphereGeometry(1,64,64);
 const base=geo.attributes.position.array.slice();
 
 const mat=new THREE.MeshPhysicalMaterial({
 color:0xffffff,
 roughness:.05,
-transmission:.8,
-thickness:.5,
+transmission:.85,
+thickness:.6,
 clearcoat:1
 });
 
@@ -122,63 +109,105 @@ const mesh=new THREE.Mesh(geo,mat);
 scene.add(mesh);
 
 scene.add(new THREE.DirectionalLight(0xffffff,2));
-scene.add(new THREE.AmbientLight(0xffffff,.9));
+scene.add(new THREE.AmbientLight(0xffffff,1));
 
 //////////////// INTERACTION //////////////////
 
+let motion=0;
 let target={x:.5,y:.5,z:0};
 let smooth={x:.5,y:.5,z:0};
 
 function lerp(a,b,t){return a+(b-a)*t;}
+
+function resume(){
+ctx.resume();
+}
+
+addEventListener("pointerdown",resume);
+addEventListener("touchstart",resume);
+
+if(DeviceMotionEvent){
+DeviceMotionEvent.requestPermission?.().catch(()=>{});
+addEventListener("devicemotion",e=>{
+if(e.accelerationIncludingGravity){
+motion+=Math.abs(e.accelerationIncludingGravity.x||0)*.02;
+motion+=Math.abs(e.accelerationIncludingGravity.y||0)*.02;
+motion+=Math.abs(e.accelerationIncludingGravity.z||0)*.02;
+
+target.x+=(e.rotationRate?.gamma||0)*.0004;
+target.y+=(e.rotationRate?.beta||0)*.0004;
+target.z=(e.accelerationIncludingGravity.z||0)*.002;
+}
+});
+}
 
 addEventListener("pointermove",e=>{
 target.x=e.clientX/innerWidth;
 target.y=1-e.clientY/innerHeight;
 });
 
-addEventListener("pointerdown",()=>ctx.resume());
+// fullscreen anywhere
 
-if(DeviceMotionEvent){
-addEventListener("devicemotion",e=>{
-if(e.rotationRate){
-target.x+=e.rotationRate.gamma*.0003;
-target.y+=e.rotationRate.beta*.0003;
-target.z=e.accelerationIncludingGravity.z*.001;
+function fullscreen(){
+if(!document.fullscreenElement){
+document.documentElement.requestFullscreen();
 }
+}
+
+let lastTap=0;
+addEventListener("pointerup",()=>{
+let now=performance.now();
+if(now-lastTap<400) fullscreen();
+lastTap=now;
+fullscreen();
 });
-}
 
 //////////////// LOOP //////////////////
 
-let last=0;
+let lastNote=0;
 
 function animate(t){
 
 requestAnimationFrame(animate);
 
-smooth.x=lerp(smooth.x,target.x,.05);
-smooth.y=lerp(smooth.y,target.y,.05);
-smooth.z=lerp(smooth.z,target.z,.05);
+smooth.x=lerp(smooth.x,target.x,.03);
+smooth.y=lerp(smooth.y,target.y,.03);
+smooth.z=lerp(smooth.z,target.z,.03);
+
+motion*=.98;
+
+let chaos=motion+Math.abs(smooth.z);
+
+// organic deformation
 
 let pos=geo.attributes.position.array;
 for(let i=0;i<pos.length;i++){
-pos[i]=base[i]*(1+Math.sin(t*.001+i)*.01);
+let n=Math.sin(i*12.9898+t*.001)*43758.5453;
+n=n-Math.floor(n);
+pos[i]=base[i]*(1+Math.sin(t*.002+i+n*10)*.06*chaos);
 }
 geo.attributes.position.needsUpdate=true;
 
-mesh.rotation.y+=.001+smooth.x*.01;
+mesh.rotation.x+=.002+smooth.y*.02;
+mesh.rotation.y+=.003+smooth.x*.02;
+
+mesh.scale.setScalar(1+.15*Math.sin(t*.002)+chaos*.2);
+
+// sound from movement
 
 let now=performance.now();
+if(motion>.2 && now-lastNote>180){
 
-if(now-last>300){
-last=now;
+lastNote=now;
 
 let root=220+smooth.y*440;
-let ratio=scale[Math.floor(smooth.x*scale.length)];
+let ratio=scale[Math.floor(Math.random()*scale.length)];
+
 glock(root*ratio);
 
-if(Math.random()<.15){
-gong(root*.5);
+if(motion>1.2){
+gong(root*.4);
+motion=0;
 }
 }
 
