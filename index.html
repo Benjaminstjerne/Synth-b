@@ -2,13 +2,13 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Luminous Gong Garden</title>
+<title>Crystal Glock Garden</title>
 
 <style>
 html,body{
 margin:0;
 overflow:hidden;
-background:#f8fbff;
+background:#ffffff;
 touch-action:none;
 }
 </style>
@@ -23,79 +23,82 @@ touch-action:none;
 //////////////// AUDIO //////////////////
 
 const ctx=new (window.AudioContext||webkitAudioContext)();
-
 const master=ctx.createGain();
 master.gain.value=.5;
 master.connect(ctx.destination);
 
-// Glockenspiel FM
+// pentatonic scale
+const scale=[1,9/8,5/4,3/2,5/3,2];
 
-const carrier=ctx.createOscillator();
+// ---------- GLOCK ----------
+
+function glock(freq){
+
+const car=ctx.createOscillator();
 const mod=ctx.createOscillator();
-const modGain=ctx.createGain();
+const mg=ctx.createGain();
+const amp=ctx.createGain();
 
-carrier.type="sine";
+car.type="sine";
 mod.type="sine";
-mod.frequency.value=220;
-modGain.gain.value=120;
 
-mod.connect(modGain);
-modGain.connect(carrier.frequency);
+mod.frequency.value=freq*2.7;
+mg.gain.value=freq*1.5;
 
-// Gong layer
+mod.connect(mg);
+mg.connect(car.frequency);
 
-const gong=ctx.createOscillator();
-gong.type="triangle";
-gong.frequency.value=90;
+car.frequency.value=freq;
 
-const gongFilter=ctx.createBiquadFilter();
-gongFilter.type="bandpass";
-gongFilter.frequency.value=300;
+const hp=ctx.createBiquadFilter();
+hp.type="highpass";
+hp.frequency.value=800;
 
-// Envelopes
+car.connect(hp);
+hp.connect(amp);
+amp.connect(master);
 
-const env=ctx.createGain();
-env.gain.value=0;
+amp.gain.setValueAtTime(0,ctx.currentTime);
+amp.gain.linearRampToValueAtTime(.8,ctx.currentTime+.002);
+amp.gain.exponentialRampToValueAtTime(.0001,ctx.currentTime+.8);
 
-const gongEnv=ctx.createGain();
-gongEnv.gain.value=0;
+car.start();
+mod.start();
 
-// Reverb
-
-const convolver=ctx.createConvolver();
-
-function impulse(){
-let rate=ctx.sampleRate;
-let len=rate*3;
-let buf=ctx.createBuffer(2,len,rate);
-for(let c=0;c<2;c++){
-let d=buf.getChannelData(c);
-for(let i=0;i<len;i++){
-d[i]=(Math.random()*2-1)*Math.pow(1-i/len,3);
-}}
-return buf;
+car.stop(ctx.currentTime+1);
+mod.stop(ctx.currentTime+1);
 }
 
-convolver.buffer=impulse();
+// ---------- GONG ----------
 
-// routing
+function gong(freq){
 
-carrier.connect(env);
-gong.connect(gongFilter);
-gongFilter.connect(gongEnv);
+const o=ctx.createOscillator();
+o.type="triangle";
+o.frequency.value=freq*.5;
 
-env.connect(convolver);
-gongEnv.connect(convolver);
-convolver.connect(master);
+const bp=ctx.createBiquadFilter();
+bp.type="bandpass";
+bp.frequency.value=200;
 
-carrier.start();
-mod.start();
-gong.start();
+const amp=ctx.createGain();
+
+o.connect(bp);
+bp.connect(amp);
+amp.connect(master);
+
+amp.gain.setValueAtTime(0,ctx.currentTime);
+amp.gain.linearRampToValueAtTime(.6,ctx.currentTime+.05);
+amp.gain.exponentialRampToValueAtTime(.0001,ctx.currentTime+5);
+
+o.start();
+o.stop(ctx.currentTime+6);
+}
 
 //////////////// THREE //////////////////
 
 const scene=new THREE.Scene();
-scene.background=new THREE.Color(0xf8fbff);
+scene.background=new THREE.Color(0xfdfefe);
 
 const camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,.1,100);
 camera.position.z=4;
@@ -104,25 +107,22 @@ const renderer=new THREE.WebGLRenderer({antialias:true});
 renderer.setSize(innerWidth,innerHeight);
 document.body.appendChild(renderer.domElement);
 
-const geo=new THREE.SphereGeometry(1,64,64);
+const geo=new THREE.SphereGeometry(1,48,48);
 const base=geo.attributes.position.array.slice();
 
 const mat=new THREE.MeshPhysicalMaterial({
-color:0xfff2cc,
-roughness:.15,
-transmission:.6,
-thickness:.6,
+color:0xffffff,
+roughness:.05,
+transmission:.8,
+thickness:.5,
 clearcoat:1
 });
 
 const mesh=new THREE.Mesh(geo,mat);
 scene.add(mesh);
 
-const sun=new THREE.DirectionalLight(0xffffff,2);
-sun.position.set(3,4,5);
-scene.add(sun);
-
-scene.add(new THREE.AmbientLight(0xffffff,.8));
+scene.add(new THREE.DirectionalLight(0xffffff,2));
+scene.add(new THREE.AmbientLight(0xffffff,.9));
 
 //////////////// INTERACTION //////////////////
 
@@ -141,47 +141,24 @@ addEventListener("pointerdown",()=>ctx.resume());
 if(DeviceMotionEvent){
 addEventListener("devicemotion",e=>{
 if(e.rotationRate){
-target.x+=e.rotationRate.gamma*.0004;
-target.y+=e.rotationRate.beta*.0004;
+target.x+=e.rotationRate.gamma*.0003;
+target.y+=e.rotationRate.beta*.0003;
 target.z=e.accelerationIncludingGravity.z*.001;
 }
 });
 }
 
-//////////////// SOUND BLOOMS //////////////////
+//////////////// LOOP //////////////////
 
 let last=0;
-
-function bloom(freq){
-
-carrier.frequency.setTargetAtTime(freq,ctx.currentTime,.05);
-mod.frequency.value=freq*2;
-
-env.gain.cancelScheduledValues(ctx.currentTime);
-env.gain.setValueAtTime(0,ctx.currentTime);
-env.gain.linearRampToValueAtTime(.8,ctx.currentTime+.01);
-env.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+2);
-
-gong.frequency.setTargetAtTime(freq*.5,ctx.currentTime,.1);
-
-gongEnv.gain.cancelScheduledValues(ctx.currentTime);
-gongEnv.gain.setValueAtTime(0,ctx.currentTime);
-gongEnv.gain.linearRampToValueAtTime(.6,ctx.currentTime+.05);
-gongEnv.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+4);
-}
-
-//////////////// LOOP //////////////////
 
 function animate(t){
 
 requestAnimationFrame(animate);
 
-smooth.x=lerp(smooth.x,target.x,.04);
-smooth.y=lerp(smooth.y,target.y,.04);
-smooth.z=lerp(smooth.z,target.z,.04);
-
-let scale=1+.2*smooth.y;
-mesh.scale.setScalar(scale);
+smooth.x=lerp(smooth.x,target.x,.05);
+smooth.y=lerp(smooth.y,target.y,.05);
+smooth.z=lerp(smooth.z,target.z,.05);
 
 let pos=geo.attributes.position.array;
 for(let i=0;i<pos.length;i++){
@@ -190,13 +167,19 @@ pos[i]=base[i]*(1+Math.sin(t*.001+i)*.01);
 geo.attributes.position.needsUpdate=true;
 
 mesh.rotation.y+=.001+smooth.x*.01;
-mesh.rotation.x+=.0005;
 
 let now=performance.now();
-if(now-last>1200){
+
+if(now-last>300){
 last=now;
-let freq=220+smooth.x*440+smooth.y*220;
-bloom(freq);
+
+let root=220+smooth.y*440;
+let ratio=scale[Math.floor(smooth.x*scale.length)];
+glock(root*ratio);
+
+if(Math.random()<.15){
+gong(root*.5);
+}
 }
 
 renderer.render(scene,camera);
