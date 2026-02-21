@@ -2,13 +2,13 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Living Crystal Orb</title>
+<title>Aeolian Crystal Field</title>
 
 <style>
 html,body{
 margin:0;
 overflow:hidden;
-background:white;
+background:#ffffff;
 touch-action:none;
 }
 </style>
@@ -24,62 +24,42 @@ touch-action:none;
 
 const ctx=new (window.AudioContext||webkitAudioContext)();
 const master=ctx.createGain();
-master.gain.value=.5;
+master.gain.value=.4;
 master.connect(ctx.destination);
 
-const scale=[1,9/8,5/4,3/2,5/3,2];
+// harmonic windchime ratios
+const field=[1,5/4,3/2,2,5/3,9/8];
 
-function glock(freq){
+function chime(freq,energy){
 
-const o1=ctx.createOscillator();
-const o2=ctx.createOscillator();
-const g=ctx.createGain();
+let count=3+Math.floor(Math.random()*3);
 
-o1.type="sine";
-o2.type="sine";
-
-o2.frequency.value=freq*2.41;
-
-o1.frequency.value=freq;
-
-o2.connect(o1.frequency);
-
-o1.connect(g);
-g.connect(master);
-
-g.gain.setValueAtTime(0,ctx.currentTime);
-g.gain.linearRampToValueAtTime(.7,ctx.currentTime+.002);
-g.gain.exponentialRampToValueAtTime(.0001,ctx.currentTime+.7);
-
-o1.start();
-o2.start();
-
-o1.stop(ctx.currentTime+1);
-o2.stop(ctx.currentTime+1);
-}
-
-function gong(freq){
+for(let i=0;i<count;i++){
 
 const o=ctx.createOscillator();
-const bp=ctx.createBiquadFilter();
 const g=ctx.createGain();
 
-o.type="triangle";
-o.frequency.value=freq*.4;
+o.type="sine";
 
-bp.type="bandpass";
-bp.frequency.value=180;
+let ratio=field[Math.floor(Math.random()*field.length)];
+let detune=(Math.random()<.12)?(Math.random()-.5)*15:0;
 
-o.connect(bp);
-bp.connect(g);
+o.frequency.value=freq*ratio;
+o.detune.value=detune;
+
+o.connect(g);
 g.connect(master);
 
-g.gain.setValueAtTime(0,ctx.currentTime);
-g.gain.linearRampToValueAtTime(.6,ctx.currentTime+.05);
-g.gain.exponentialRampToValueAtTime(.0001,ctx.currentTime+5);
+let now=ctx.currentTime;
+let dur=2+energy*4;
+
+g.gain.setValueAtTime(0,now);
+g.gain.linearRampToValueAtTime(.3/(i+1),now+.3);
+g.gain.exponentialRampToValueAtTime(.0001,now+dur);
 
 o.start();
-o.stop(ctx.currentTime+6);
+o.stop(now+dur+1);
+}
 }
 
 //////////////// THREE //////////////////
@@ -94,12 +74,12 @@ const renderer=new THREE.WebGLRenderer({antialias:true});
 renderer.setSize(innerWidth,innerHeight);
 document.body.appendChild(renderer.domElement);
 
-const geo=new THREE.SphereGeometry(1,64,64);
+const geo=new THREE.IcosahedronGeometry(1,5);
 const base=geo.attributes.position.array.slice();
 
 const mat=new THREE.MeshPhysicalMaterial({
 color:0xffffff,
-roughness:.05,
+roughness:.08,
 transmission:.85,
 thickness:.6,
 clearcoat:1
@@ -130,12 +110,12 @@ if(DeviceMotionEvent){
 DeviceMotionEvent.requestPermission?.().catch(()=>{});
 addEventListener("devicemotion",e=>{
 if(e.accelerationIncludingGravity){
-motion+=Math.abs(e.accelerationIncludingGravity.x||0)*.02;
-motion+=Math.abs(e.accelerationIncludingGravity.y||0)*.02;
-motion+=Math.abs(e.accelerationIncludingGravity.z||0)*.02;
+motion+=Math.abs(e.accelerationIncludingGravity.x||0)*.015;
+motion+=Math.abs(e.accelerationIncludingGravity.y||0)*.015;
+motion+=Math.abs(e.accelerationIncludingGravity.z||0)*.015;
 
-target.x+=(e.rotationRate?.gamma||0)*.0004;
-target.y+=(e.rotationRate?.beta||0)*.0004;
+target.x+=(e.rotationRate?.gamma||0)*.0003;
+target.y+=(e.rotationRate?.beta||0)*.0003;
 target.z=(e.accelerationIncludingGravity.z||0)*.002;
 }
 });
@@ -146,7 +126,7 @@ target.x=e.clientX/innerWidth;
 target.y=1-e.clientY/innerHeight;
 });
 
-// fullscreen anywhere
+// fullscreen
 
 function fullscreen(){
 if(!document.fullscreenElement){
@@ -154,27 +134,21 @@ document.documentElement.requestFullscreen();
 }
 }
 
-let lastTap=0;
-addEventListener("pointerup",()=>{
-let now=performance.now();
-if(now-lastTap<400) fullscreen();
-lastTap=now;
-fullscreen();
-});
+addEventListener("pointerup",fullscreen);
 
 //////////////// LOOP //////////////////
 
-let lastNote=0;
+let last=0;
 
 function animate(t){
 
 requestAnimationFrame(animate);
 
-smooth.x=lerp(smooth.x,target.x,.03);
-smooth.y=lerp(smooth.y,target.y,.03);
-smooth.z=lerp(smooth.z,target.z,.03);
+smooth.x=lerp(smooth.x,target.x,.02);
+smooth.y=lerp(smooth.y,target.y,.02);
+smooth.z=lerp(smooth.z,target.z,.02);
 
-motion*=.98;
+motion*=.97;
 
 let chaos=motion+Math.abs(smooth.z);
 
@@ -182,33 +156,27 @@ let chaos=motion+Math.abs(smooth.z);
 
 let pos=geo.attributes.position.array;
 for(let i=0;i<pos.length;i++){
-let n=Math.sin(i*12.9898+t*.001)*43758.5453;
-n=n-Math.floor(n);
-pos[i]=base[i]*(1+Math.sin(t*.002+i+n*10)*.06*chaos);
+let wob=Math.sin(t*.001+i)*.05*chaos;
+pos[i]=base[i]*(1+wob);
 }
 geo.attributes.position.needsUpdate=true;
 
-mesh.rotation.x+=.002+smooth.y*.02;
-mesh.rotation.y+=.003+smooth.x*.02;
+mesh.rotation.x+=.001+smooth.y*.01;
+mesh.rotation.y+=.001+smooth.x*.01;
 
-mesh.scale.setScalar(1+.15*Math.sin(t*.002)+chaos*.2);
+mesh.scale.setScalar(1+.1*Math.sin(t*.001)+chaos*.2);
 
-// sound from movement
+// slower sound triggers
 
 let now=performance.now();
-if(motion>.2 && now-lastNote>180){
+if(motion>.4 && now-last>1200){
 
-lastNote=now;
+last=now;
 
-let root=220+smooth.y*440;
-let ratio=scale[Math.floor(Math.random()*scale.length)];
+let root=180+smooth.y*300;
+chime(root,chaos);
 
-glock(root*ratio);
-
-if(motion>1.2){
-gong(root*.4);
 motion=0;
-}
 }
 
 renderer.render(scene,camera);
